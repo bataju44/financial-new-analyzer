@@ -52,7 +52,7 @@ The project is designed to fetch financial news, analyze it using multiple NLP m
    ```bash
    python main.py
    ```
-2. **Run the dashboard**
+2. **Run the dashboard**  
   This shows a bashboard for the articles in the database and shows a bargraph of the sentiment scores.
   ```bash
    python dashboard.py
