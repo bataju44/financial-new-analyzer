@@ -1,30 +1,33 @@
-# main.py
 from news_fetcher import fetch_financial_news
-from llm_analyzer_hf import analyze_news_article
 from database import save_analysis_to_db
+from model_comparison_analyzer import BatchModelComparison
 import time
 
 def run_full_pipeline():
     print("Starting news analysis pipeline...")
-    
-    # 1. Fetch News
-    print("Fetching latest news...")
+
+    # 1. Fetch news
     articles = fetch_financial_news()
     print(f"Fetched {len(articles)} articles.")
-    
-    # 2. Process each article
-    for article in articles:
-        print(f"Analyzing: {article['title'][:50]}...")
-        
-        # 3. Analyze with LLM
-        analysis = analyze_news_article(article['content'])
-        
-        # 4. Save to Database
-        save_analysis_to_db(article, analysis)
-        
-        # Be nice to the API - add a short delay to avoid rate limits
-        time.sleep(1) 
-    
+
+    # 2. Initialize batch analyzer once
+    batch_analyzer = BatchModelComparison(
+        sentiment_models=['twitter-roberta', 'distilbert-sst2'],
+        ner_models=['bert-base-ner']
+    )
+
+    # 3. Collect all article texts
+    texts = [a['content'] for a in articles]
+
+    # 4. Run batch analysis
+    print("Running batch analysis...")
+    batch_results = batch_analyzer.analyze_batch(texts)
+
+    # 5. Save to database
+    for article, result in zip(articles, batch_results):
+        save_analysis_to_db(article, result)
+        time.sleep(0.5)
+
     print("Pipeline run completed!")
 
 if __name__ == "__main__":

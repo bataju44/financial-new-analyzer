@@ -1,52 +1,73 @@
 # database.py
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, JSON
-from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
-import os
-from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, Integer, Float, String, Text, ForeignKey, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+import datetime
 
-load_dotenv()
+# ------------------- DATABASE SETUP -------------------
 Base = declarative_base()
 
-# Define the SQL Table
-class ProcessedArticle(Base):
-    __tablename__ = 'processed_articles'
-    
+class Article(Base):
+    __tablename__ = "articles"
     id = Column(Integer, primary_key=True)
-    title = Column(String, nullable=False)
-    original_content = Column(String, nullable=False)
-    url = Column(String, nullable=False)
-    published_at = Column(DateTime)
-    sentiment = Column(Float)  # -1 to 1
-    companies = Column(JSON)   # Stores list of companies as JSON
-    created_at = Column(DateTime, default=datetime.utcnow)
+    title = Column(String(512))
+    content = Column(Text)
+    published_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Relationship to analysis results
+    analyses = relationship("AnalysisResult", back_populates="article")
 
-# Database connection
-DATABASE_URL = os.getenv('DATABASE_URL')
-engine = create_engine(DATABASE_URL)
-Base.metadata.create_all(engine)  # Creates the table if it doesn't exist
+class AnalysisResult(Base):
+    __tablename__ = "analysis_results"
+    id = Column(Integer, primary_key=True)
+    article_id = Column(Integer, ForeignKey("articles.id"))
+    model_name = Column(String(128))          # store per model
+    sentiment = Column(Float, nullable=True)  # numeric sentiment score
+    ner_entities = Column(Text, nullable=True) # comma-separated company names
+    
+    article = relationship("Article", back_populates="analyses")
+
+# Create engine and session
+engine = create_engine("sqlite:///financial_news.db")  # or your DB URI
 Session = sessionmaker(bind=engine)
+Base.metadata.create_all(engine)
 
-def save_analysis_to_db(article_data, analysis_result):
-    """Saves the original article and its analysis to the database."""
+# ------------------- DATABASE FUNCTIONS -------------------
+def save_analysis_to_db(article_data: dict, analysis_results: list):
+    """
+    Save article and model analysis results to database.
+
+    article_data: {'title': str, 'content': str}
+    analysis_results: output of BatchModelComparison.analyze_batch()
+    """
     session = Session()
     try:
-        # Convert published_at string to datetime object if it exists
-        pub_date = datetime.fromisoformat(article_data['published_at'].replace('Z', '+00:00')) if article_data.get('published_at') else None
-        
-        new_article = ProcessedArticle(
-            title=article_data['title'],
-            original_content=article_data['content'],
-            url=article_data['url'],
-            published_at=pub_date,
-            sentiment=analysis_result.get('sentiment', 0),
-            companies=analysis_result.get('companies', [])
+        # 1️⃣ Save the article
+        article = Article(
+            title=article_data.get('title', '')[:512],
+            content=article_data.get('content', '')
         )
-        session.add(new_article)
+        session.add(article)
+        session.commit()  # commit to get article.id
+
+        # 2️⃣ Save all model analyses
+        for res in analysis_results:
+            # res has: 'all_sentiments', 'all_ner'
+            for model_name, sentiment_data in res['all_sentiments'].items():
+                ner_data = res['all_ner'].get(model_name, {'companies': []})
+                analysis = AnalysisResult(
+                    article_id=article.id,
+                    model_name=model_name,
+                    sentiment=sentiment_data['score'],  # float
+                    ner_entities=",".join(ner_data.get('companies', []))
+                )
+                session.add(analysis)
+
         session.commit()
-        print(f"Saved article: {article_data['title'][:50]}...")
+        print(f"Saved article '{article.title[:50]}...' with {len(analysis_results[0]['all_sentiments'])} models analyzed.")
+
     except Exception as e:
-        print(f"Error saving to database: {e}")
         session.rollback()
+        print(f"Error saving to database: {e}")
     finally:
         session.close()
