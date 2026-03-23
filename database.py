@@ -3,6 +3,9 @@ from sqlalchemy import create_engine, Column, Integer, Float, String, Text, Fore
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import datetime
+import os
+
+
 
 # ------------------- DATABASE SETUP -------------------
 Base = declarative_base()
@@ -28,9 +31,10 @@ class AnalysisResult(Base):
     article = relationship("Article", back_populates="analyses")
 
 # Create engine and session
-engine = create_engine("sqlite:///financial_news.db")  # or your DB URI
+DATABASE_URL = os.getenv('DATABASE_URL')
+engine = create_engine(DATABASE_URL)
+Base.metadata.create_all(engine)  
 Session = sessionmaker(bind=engine)
-Base.metadata.create_all(engine)
 
 # ------------------- DATABASE FUNCTIONS -------------------
 def save_analysis_to_db(article_data: dict, analysis_results: list):

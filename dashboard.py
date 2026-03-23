@@ -20,6 +20,10 @@ query = text("""
 
 with engine.connect() as conn:
     df = pd.read_sql(query, conn)
+    
+# Show a simple chart
+st.write("### Sentiment Distribution")
+st.bar_chart(df['sentiment'])
 
 # Display results
 st.write("### Latest Analyzed News")
@@ -29,6 +33,3 @@ for _, row in df.iterrows():
         st.write(f"**Published:** {row['published_at']}")
         st.write(f"**Read more:** [Link]({row['url']})")
 
-# Show a simple chart
-st.write("### Sentiment Distribution")
-st.bar_chart(df['sentiment'])
